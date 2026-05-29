@@ -1,8 +1,5 @@
 <#
     verify.ps1 — автоматическая проверка всей логики OTP-сервиса через HTTP.
-    Предполагается, что сервис уже запущен: java -jar target\otp-service.jar
-    Запуск:   powershell -ExecutionPolicy Bypass -File .\verify.ps1
-    Опц.:     .\verify.ps1 -Base "http://localhost:8080"
 #>
 param(
     [string]$Base = "http://localhost:8080",

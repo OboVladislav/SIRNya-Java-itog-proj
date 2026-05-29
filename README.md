@@ -3,8 +3,7 @@
 Backend-сервис для защиты операций одноразовыми кодами подтверждения (OTP).
 Пользователь инициирует операцию, сервис генерирует временный код, рассылает его по
 выбранному каналу (файл, e-mail, SMS через SMPP-эмулятор, Telegram) и затем проверяет код
-при подтверждении операции. Реализовано на чистом Java (JDK 17+) без Spring: HTTP — на
-`com.sun.net.httpserver`, доступ к данным — на JDBC к PostgreSQL.
+при подтверждении операции.
 
 ## Стек
 
@@ -53,14 +52,11 @@ util/       — хеширование паролей, JSON
 - `sms.properties` — параметры SMPP-эмулятора (host/port/system_id/password).
 - `telegram.properties` — токен бота, URL API, chatId.
 
-По умолчанию БД: `jdbc:postgresql://localhost:5432/otp_service`, пользователь `postgres`.
-**Базу данных и таблицы создавать вручную не нужно** — при старте сервис сам создаёт БД
-(если её нет) и накатывает схему, а также сеет дефолтную конфигурацию OTP.
 
 ## Сборка и запуск
 
 ```bash
-mvn package                 # собирает исполняемый "fat-jar" в target/otp-service.jar
+mvn package                 
 java -jar target/otp-service.jar
 ```
 
@@ -109,7 +105,7 @@ curl -X POST localhost:8080/api/auth/register -d '{"login":"alice","password":"s
 # 2. Логин -> получить токен
 TOKEN=$(curl -s -X POST localhost:8080/api/auth/login -d '{"login":"alice","password":"secret"}')
 
-# 3. Админ меняет конфигурацию (получив свой ADMIN-токен аналогично)
+# 3. Админ меняет конфигурацию 
 curl -X PUT localhost:8080/api/admin/config \
      -H "Authorization: Bearer <ADMIN_TOKEN>" \
      -d '{"codeLength":6,"ttlSeconds":300}'
@@ -139,17 +135,17 @@ curl -X POST localhost:8080/api/otp/validate \
 ### Шаг 0. Подготовка (один раз)
 
 ```powershell
-mvn package                       # собирает target/otp-service.jar (нужен и для SMS-эмулятора)
+mvn package                      
 ```
 
 Запустите сервис в **отдельном** окне и не закрывайте его:
 
 ```powershell
-java -jar target/otp-service.jar  # слушает http://localhost:8080
+java -jar target/otp-service.jar
 ```
 
 PostgreSQL должен быть доступен (`localhost:5432`, пользователь/пароль из
-`application.properties`). Базу и таблицы создавать вручную не нужно — сервис делает это сам.
+`application.properties`).
 
 ### Шаг 1. Основной прогон + канал FILE
 
@@ -172,8 +168,7 @@ powershell -ExecutionPolicy Bypass -File .\test-email.ps1
 (`emulators/FakeSmtpServer.java`, порт `2525`, без авторизации) с захватом его вывода,
 генерирует код по каналу EMAIL, убеждается, что письмо реально дошло до эмулятора,
 вытаскивает из письма код и подтверждает им операцию. По завершении эмулятор гасится.
-Печатает `PASS`/`FAIL`. Никаких аккаунтов и личных данных не требуется —
-`email.properties` уже настроен на этот эмулятор.
+Печатает `PASS`/`FAIL`. 
 
 ### Шаг 3. Канал SMS (без оператора)
 
@@ -181,34 +176,25 @@ powershell -ExecutionPolicy Bypass -File .\test-email.ps1
 powershell -ExecutionPolicy Bypass -File .\test-sms.ps1
 ```
 
-То же самое для SMS: поднимает локальный фейковый SMPP-сервер (SMSC)
+Поднимает локальный фейковый SMPP-сервер (SMSC)
 (`emulators/FakeSmppServer.java`, порт `2775`, принимает любой bind, библиотека jSMPP
 берётся из `target/otp-service.jar`), отправляет код по каналу SMS, проверяет, что SMS
 дошла до эмулятора, и валидирует код. `sms.properties` уже настроен на этот эмулятор.
 
-> Скрипты `test-email.ps1` / `test-sms.ps1` сами запускают и останавливают эмулятор, поэтому
-> отдельно поднимать его не нужно. Если хотите **вручную** посмотреть приходящие сообщения,
+>  Если есть необходимость **вручную** посмотреть приходящие сообщения,
 > запустите эмулятор в отдельном окне: `.\emulators\start-smtp.ps1` или `.\emulators\start-smpp.ps1`
 > (тогда письма/SMS печатаются в его консоли), и шлите запросы `POST /api/otp/generate` руками.
 
 ### Шаг 4. Канал TELEGRAM (нужен реальный бот)
 
-Локального эмулятора для Telegram нет — Bot API работает только на серверах Telegram,
-поэтому нужен настоящий (бесплатный) токен бота. Пошагово:
 
-1. В Telegram напишите `@BotFather`, команда `/newbot` → получите **токен** вида
-   `123456789:AAE...`.
-2. Напишите своему боту любое сообщение (иначе он не сможет ответить вам первым).
-3. Узнайте свой **chatId**: откройте `https://api.telegram.org/bot<ТОКЕН>/getUpdates`
-   и возьмите число из `"chat":{"id":...}`. Альтернатива — написать `@userinfobot`,
-   он сразу пришлёт ваш `id`.
-4. Впишите в `telegram.properties` (токен — и в `apiUrl` тоже):
+Впишите в `telegram.properties` свои переменные среды для тестирования телеграмм бота
    ```properties
    telegram.botToken=<ТОКЕН>
    telegram.apiUrl=https://api.telegram.org/bot<ТОКЕН>/sendMessage
    telegram.chatId=<CHAT_ID>
    ```
-5. Перезапустите сервис и отправьте код (код придёт сообщением в чат с ботом):
+Перезапустите сервис и отправьте код:
    ```powershell
    $base = "http://localhost:8080"
    $u = "tg_$(Get-Random)"; $pwd = "secret"
@@ -221,7 +207,7 @@ powershell -ExecutionPolicy Bypass -File .\test-sms.ps1
        -Body (@{ operationId = "op-tg-$(Get-Random)"; channel = "TELEGRAM" } | ConvertTo-Json)
    ```
 
-Быстрая проверка токена и chatId **без сервиса** (если придёт сообщение — настройки верны):
+Быстрая проверка токена и chatId **без сервиса** 
 ```powershell
 $token = "<ТОКЕН>"; $chat = "<CHAT_ID>"
 Invoke-RestMethod -Uri "https://api.telegram.org/bot$token/sendMessage" -Method Post `
@@ -241,36 +227,28 @@ Invoke-RestMethod -Uri "https://api.telegram.org/bot$token/sendMessage" -Method 
 канала (e-mail, телефон, chatId); для FILE не нужно, для остальных — обязательно
 (кроме Telegram, где при пустом `recipient` берётся `chatId` из настроек).
 
-- **FILE** — код дописывается в `otp-codes.txt` в корне проекта. Работает без внешних
-  сервисов, ничего настраивать не нужно.
+- **FILE** — код дописывается в `otp-codes.txt` в корне проекта.
 
 - **EMAIL** — SMTP через Jakarta Mail. **По умолчанию всё уже настроено на локальный
-  эмулятор — личная почта и аккаунты не нужны, можно тестировать сразу:**
-  1. *Эмулятор (рекомендуется, без личных данных):* в отдельном окне запустите
+  эмулятор**
+
+  Эмулятор в отдельном окне запустите
      ```powershell
      powershell -ExecutionPolicy Bypass -File .\emulators\start-smtp.ps1
      ```
-     Он слушает `localhost:2525` (без авторизации); `email.properties` уже указывает на него.
-     Письмо с кодом печатается прямо в консоли эмулятора.
-  2. Запрос: `{"operationId":"op1","channel":"EMAIL","recipient":"you@example.com"}` →
-     код появится в окне эмулятора.
-  3. *Реальная почта (например Gmail), если нужно:* включите 2FA и создайте «App password»,
-     впишите в `email.properties`: `mail.smtp.host=smtp.gmail.com`, `mail.smtp.port=587`,
-     `mail.smtp.auth=true`, `mail.smtp.starttls.enable=true`, `email.username`/`email.from`
-     = ваш адрес, `email.password` = app-password. Перезапустите сервис.
+     Он слушает `localhost:2525`; `email.properties` уже указывает на него.
 
-- **SMS** — SMPP. **По умолчанию всё настроено на локальный эмулятор из комплекта
-  (`emulators/FakeSmppServer.java`) — оператор и SMPPsim не нужны:**
-  1. В отдельном окне (нужен собранный `target/otp-service.jar` ради библиотеки jSMPP):
+
+- **SMS** — SMPP. По умолчанию всё настроено на локальный эмулятор из комплекта
+  (`emulators/FakeSmppServer.java`)
+
+    В отдельном окне:
+
      ```powershell
      powershell -ExecutionPolicy Bypass -File .\emulators\start-smpp.ps1
      ```
      Он слушает `localhost:2775` и принимает любой bind; `sms.properties` уже указывает на него.
-  2. Запрос: `{"operationId":"op1","channel":"SMS","recipient":"79991234567"}` →
-     SMS с кодом печатается в окне эмулятора.
-  3. *Альтернатива — SMPPsim* (см. [opensmpp.org](http://opensmpp.org/)): запустите
-     `startsmppsim.bat` (порт `2775`), сверьте `smpp.system_id`/`smpp.password`
-     в `sms.properties` (по умолчанию `smppclient1` / `password`).
+
 
 - **TELEGRAM** — через бота Telegram Bot API:
   1. Создайте бота у `@BotFather`, получите токен.
@@ -280,9 +258,6 @@ Invoke-RestMethod -Uri "https://api.telegram.org/bot$token/sendMessage" -Method 
      `telegram.apiUrl=https://api.telegram.org/bot<TOKEN>/sendMessage`, `telegram.chatId`.
   4. Запрос: `{"operationId":"op1","channel":"TELEGRAM"}` (или с `recipient` = другой chatId) →
      сообщение придёт в Telegram.
-
-> После правки `*.properties` достаточно перезапустить сервис (файлы читаются из рабочей
-> директории). Канал по умолчанию (если `channel` не передан) задаётся `otp.defaultChannel`.
 
 ## Фоновая пометка просроченных кодов
 
@@ -294,7 +269,6 @@ Invoke-RestMethod -Uri "https://api.telegram.org/bot$token/sendMessage" -Method 
 Все запросы к API логируются (метод, путь, источник, код ответа, длительность),
 а также ключевые доменные события (регистрация, логин, генерация/валидация кода,
 изменение конфигурации, удаление пользователя). Вывод — в консоль и в `logs/otp-service.log`
-(см. `logback.xml`).
 
 ## Безопасность
 
